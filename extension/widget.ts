@@ -13,7 +13,8 @@ function formatTokens(tokens: number): string {
 
 function buildLine(agent: SubagentState, frame: string): string {
 	const model = agent.model ?? "…";
-	return `${frame} ${agent.id} (${model}) · turn ${agent.turns} · ${formatTokens(agent.contextTokens)} ctx`;
+	const icon = agent.status === "waiting" ? "⏳" : frame;
+	return `${icon} ${agent.id} (${model}) · turn ${agent.turns} · ${formatTokens(agent.contextTokens)} ctx`;
 }
 
 interface WidgetState {
@@ -41,6 +42,10 @@ function clearWidget(): void {
 	current.ctx.ui.setWidget("crew-status", undefined);
 }
 
+function hasRunningAgent(agents: SubagentState[]): boolean {
+	return agents.some((a) => a.status === "running");
+}
+
 function syncWidgetText(state: WidgetState, agents: SubagentState[]): void {
 	const frame = SPINNER_FRAMES[state.frameIndex % SPINNER_FRAMES.length];
 	const lines = agents.map((agent) => buildLine(agent, frame));
@@ -54,7 +59,7 @@ export function updateWidget(ctx: ExtensionContext, crewManager: CrewManager): v
 		return;
 	}
 
-	const running = crewManager.getRunning();
+	const running = crewManager.getActive();
 	if (running.length === 0) {
 		clearWidget();
 		return;
@@ -77,12 +82,13 @@ export function updateWidget(ctx: ExtensionContext, crewManager: CrewManager): v
 			tui,
 			frameIndex: 0,
 			timer: setInterval(() => {
-				state.frameIndex++;
-				const agents = crewManager.getRunning();
+				const agents = crewManager.getActive();
 				if (agents.length === 0) {
 					clearWidget();
 					return;
 				}
+				if (!hasRunningAgent(agents)) return;
+				state.frameIndex++;
 				syncWidgetText(state, agents);
 			}, SPINNER_INTERVAL_MS),
 		};

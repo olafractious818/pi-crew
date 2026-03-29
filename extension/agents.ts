@@ -1,22 +1,25 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { getAgentDir, parseFrontmatter } from "@mariozechner/pi-coding-agent";
+
+export interface ParsedModel {
+	provider: string;
+	modelId: string;
+}
 
 export interface AgentConfig {
 	name: string;
 	description: string;
 	model?: string;
-	thinking?: string;
+	parsedModel?: ParsedModel;
+	thinking?: ThinkingLevel;
 	tools?: string[];
 	skills?: string[];
 	compaction?: boolean;
+	interactive?: boolean;
 	systemPrompt: string;
 	filePath: string;
-}
-
-export interface ParsedModel {
-	provider: string;
-	modelId: string;
 }
 
 export interface AgentDiscoveryWarning {
@@ -28,6 +31,15 @@ export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	warnings: AgentDiscoveryWarning[];
 }
+
+const VALID_THINKING_LEVELS: readonly string[] = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+];
 
 /**
  * Converts a comma-separated string or YAML array to string[].
@@ -68,6 +80,12 @@ export function parseModel(value: unknown): ParsedModel | null {
 	if (!provider || !modelId) return null;
 
 	return { provider, modelId };
+}
+
+function validateThinkingLevel(value: string | undefined): ThinkingLevel | undefined {
+	if (!value) return undefined;
+	if (VALID_THINKING_LEVELS.includes(value)) return value as ThinkingLevel;
+	return undefined;
 }
 
 export function loadAgentFromFile(
@@ -117,26 +135,44 @@ export function loadAgentFromFile(
 		return null;
 	}
 
-	const model = typeof frontmatter.model === "string" ? frontmatter.model : undefined;
-	const thinking = typeof frontmatter.thinking === "string" ? frontmatter.thinking : undefined;
+	const modelRaw = typeof frontmatter.model === "string" ? frontmatter.model : undefined;
+	const parsedModel = modelRaw ? parseModel(modelRaw) : undefined;
 
-	if (model && !parseModel(model)) {
-		console.warn(`[pi-crew] Agent "${name}": invalid model format "${model}" (expected "provider/model-id"), ignoring model field`);
+	if (modelRaw && !parsedModel) {
+		onWarning?.({
+			filePath,
+			message: `Agent "${name}": invalid model format "${modelRaw}" (expected "provider/model-id"), ignoring model field`,
+		});
+		console.warn(
+			`[pi-crew] Agent "${name}": invalid model format "${modelRaw}" (expected "provider/model-id"), ignoring model field`,
+		);
+	}
+
+	const thinkingRaw = typeof frontmatter.thinking === "string" ? frontmatter.thinking : undefined;
+	const thinking = validateThinkingLevel(thinkingRaw);
+
+	if (thinkingRaw && !thinking) {
+		console.warn(
+			`[pi-crew] Agent "${name}": invalid thinking level "${thinkingRaw}", ignoring`,
+		);
 	}
 
 	const tools = parseCommaSeparated(frontmatter.tools);
 	const skills = parseCommaSeparated(frontmatter.skills);
 
 	const compaction = typeof frontmatter.compaction === "boolean" ? frontmatter.compaction : undefined;
+	const interactive = typeof frontmatter.interactive === "boolean" ? frontmatter.interactive : undefined;
 
 	return {
 		name,
 		description,
-		model,
+		model: modelRaw,
+		parsedModel: parsedModel ?? undefined,
 		thinking,
 		tools,
 		skills,
 		compaction,
+		interactive,
 		systemPrompt: body,
 		filePath,
 	};
@@ -158,6 +194,7 @@ export function discoverAgents(): AgentDiscoveryResult {
 
 	const agents: AgentConfig[] = [];
 	const warnings: AgentDiscoveryWarning[] = [];
+	const seenNames = new Map<string, string>();
 
 	for (const entry of entries) {
 		if (!entry.name.endsWith(".md")) continue;
@@ -165,9 +202,22 @@ export function discoverAgents(): AgentDiscoveryResult {
 
 		const filePath = path.join(agentsDir, entry.name);
 		const agent = loadAgentFromFile(filePath, (warning) => warnings.push(warning));
-		if (agent) {
-			agents.push(agent);
+		if (!agent) continue;
+
+		const existing = seenNames.get(agent.name);
+		if (existing) {
+			warnings.push({
+				filePath,
+				message: `Duplicate agent name "${agent.name}" (already defined in ${existing}), skipping`,
+			});
+			console.warn(
+				`[pi-crew] Duplicate agent name "${agent.name}": "${filePath}" conflicts with "${existing}", skipping`,
+			);
+			continue;
 		}
+
+		seenNames.set(agent.name, filePath);
+		agents.push(agent);
 	}
 
 	return { agents, warnings };

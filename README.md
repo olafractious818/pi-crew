@@ -10,7 +10,7 @@ pi install @melihmucuk/pi-crew
 
 ## How It Works
 
-pi-crew adds two tools and one command to your pi session:
+pi-crew adds four tools and one command to your pi session:
 
 ### `crew_list`
 
@@ -24,6 +24,22 @@ Spawns an agent in an isolated session. The agent runs in the background with it
 "spawn scout and find all API endpoints and their authentication methods"
 ```
 
+### `crew_respond`
+
+Sends a follow-up message to an interactive agent that is waiting for a response. Interactive agents stay alive after their initial response, allowing multi-turn conversations.
+
+```
+"respond to planner-a1b2 with: yes, use the existing auth middleware"
+```
+
+### `crew_done`
+
+Closes an interactive agent session when you no longer need it. This disposes the session and frees memory.
+
+```
+"close planner-a1b2, the plan looks good"
+```
+
 ### `/crew-abort`
 
 Aborts a running agent. Supports tab completion for agent IDs.
@@ -32,12 +48,12 @@ Aborts a running agent. Supports tab completion for agent IDs.
 
 pi-crew ships with five agent definitions that cover common workflows:
 
-| Agent              | Purpose                                                                             | Tools                      | Model            |
-| ------------------ | ----------------------------------------------------------------------------------- | -------------------------- | ---------------- |
+| Agent                | Purpose                                                                                                                  | Tools                      | Model             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ----------------- |
 | **scout**            | Investigates codebase and returns structured findings. Read-only. Use before planning or implementing to gather context. | read, grep, find, ls, bash | claude-haiku-4-5  |
-| **planner**          | Analyzes requirements and produces a step-by-step implementation plan. Read-only. Does not write code.                   | read, grep, find, ls, bash | gpt-5.4           |
+| **planner**          | Analyzes requirements and produces a step-by-step implementation plan. Read-only. Does not write code. Interactive.       | read, grep, find, ls, bash | gpt-5.4           |
 | **code-reviewer**    | Reviews code changes for bugs, security issues, and correctness. Read-only. Does not fix issues.                         | read, grep, find, ls, bash | gpt-5.4           |
-| **quality-reviewer** | Reviews code structure for maintainability, duplication, and complexity. Read-only. Does not look for bugs.               | read, grep, find, ls, bash | gpt-5.4           |
+| **quality-reviewer** | Reviews code structure for maintainability, duplication, and complexity. Read-only. Does not look for bugs.              | read, grep, find, ls, bash | gpt-5.4           |
 | **worker**           | Implements code changes, fixes, and refactors autonomously. Has full read-write access to the codebase.                  | all                        | claude-sonnet-4-6 |
 
 ## Custom Agents
@@ -70,6 +86,7 @@ The agent will follow these instructions when executing tasks.
 | `tools`       | no       | Comma-separated list: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. Omit for all.      |
 | `skills`      | no       | Comma-separated skill names (e.g., `ast-grep`). Omit for all.                                   |
 | `compaction`  | no       | Enable context compaction. Defaults to `true`.                                                  |
+| `interactive` | no       | Keep session alive after response for multi-turn conversations. Defaults to `false`.            |
 
 ## Status Widget
 
@@ -78,7 +95,10 @@ When agents are running, a live status widget appears in the TUI showing each ag
 ```
 ⠹ scout-a1b2 (claude-haiku-4-5) · turn 3 · 12.5k ctx
 ⠸ worker-c3d4 (claude-sonnet-4-20250514) · turn 7 · 45.2k ctx
+⏳ planner-e5f6 (gpt-5.4) · turn 2 · 8.3k ctx
 ```
+
+Interactive agents waiting for a response show a ⏳ icon instead of a spinner.
 
 ## License
 

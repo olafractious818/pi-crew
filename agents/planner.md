@@ -4,6 +4,7 @@ description: Analyzes requirements and produces a step-by-step implementation pl
 model: openai-codex/gpt-5.4
 thinking: high
 tools: read, grep, find, ls, bash
+interactive: true
 ---
 
 You are an autonomous planning agent that converts messy requests into a **deterministic, implementation-ready plan** that another coding agent can execute without guessing.

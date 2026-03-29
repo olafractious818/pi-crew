@@ -1,79 +1,36 @@
 import { randomBytes } from "node:crypto";
-import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import {
-	type AgentSession,
-	AuthStorage,
-	type CreateAgentSessionResult,
-	createAgentSession,
-	DefaultResourceLoader,
-	type ExtensionAPI,
-	type ExtensionContext,
-	ModelRegistry,
-	SessionManager,
-	SettingsManager,
-	createBashTool,
-	createEditTool,
-	createFindTool,
-	createGrepTool,
-	createLsTool,
-	createReadTool,
-	createWriteTool,
-} from "@mariozechner/pi-coding-agent";
-import { type AgentConfig, parseModel } from "./agents.js";
-
-// Re-export for widget.ts
-export type { AgentConfig };
+import type { AgentSession, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { AgentConfig } from "./agents.js";
+import { bootstrapSession } from "./session-factory.js";
+import { type SubagentStatus, sendSteeringMessage } from "./steering.js";
 
 export interface SubagentState {
 	id: string;
 	agentConfig: AgentConfig;
 	task: string;
-	status: "running" | "done" | "error";
+	status: SubagentStatus;
+	ownerSessionFile: string | undefined;
 	session: AgentSession | null;
 	turns: number;
 	contextTokens: number;
 	model: string | undefined;
-	aborted: boolean;
 	error?: string;
 	result?: string;
 }
 
-type ToolFactory = (
-	cwd: string,
-) => ReturnType<
-	typeof createReadTool |
-		typeof createBashTool |
-		typeof createEditTool |
-		typeof createWriteTool |
-		typeof createGrepTool |
-		typeof createFindTool |
-		typeof createLsTool
->;
+function generateId(name: string, existingIds: Set<string>): string {
+	for (let i = 0; i < 10; i++) {
+		const id = `${name}-${randomBytes(4).toString("hex")}`;
+		if (!existingIds.has(id)) return id;
+	}
+	return `${name}-${randomBytes(8).toString("hex")}`;
+}
 
-type AgentResultStatus = "completed" | "failed" | "aborted";
-
-const TOOL_FACTORIES: Record<string, ToolFactory> = {
-	read: (cwd) => createReadTool(cwd),
-	bash: (cwd) => createBashTool(cwd),
-	edit: (cwd) => createEditTool(cwd),
-	write: (cwd) => createWriteTool(cwd),
-	grep: (cwd) => createGrepTool(cwd),
-	find: (cwd) => createFindTool(cwd),
-	ls: (cwd) => createLsTool(cwd),
-};
-
-const VALID_THINKING_LEVELS: readonly ThinkingLevel[] = [
-	"off",
-	"minimal",
-	"low",
-	"medium",
-	"high",
-	"xhigh",
-];
-
-function generateId(name: string): string {
-	return `${name}-${randomBytes(2).toString("hex")}`;
+// Status may change externally via abort(). Standalone function avoids TS narrowing.
+function isAborted(state: SubagentState): boolean {
+	return state.status === "aborted";
 }
 
 function extractLastAssistantText(messages: AgentMessage[]): string | undefined {
@@ -93,29 +50,12 @@ function extractLastAssistantText(messages: AgentMessage[]): string | undefined 
 	return undefined;
 }
 
-function resolveThinkingLevel(value: string | undefined): ThinkingLevel | undefined {
-	if (!value) return undefined;
-	return VALID_THINKING_LEVELS.includes(value as ThinkingLevel)
-		? (value as ThinkingLevel)
-		: undefined;
-}
-
-function isSupportedTool(name: string): name is keyof typeof TOOL_FACTORIES {
-	return name in TOOL_FACTORIES;
-}
-
-function resolveTools(toolNames: string[] | undefined, cwd: string) {
-	const names = toolNames ?? Object.keys(TOOL_FACTORIES);
-	return names
-		.filter(isSupportedTool)
-		.map((name) => TOOL_FACTORIES[name](cwd));
-}
-
 export class CrewManager {
 	private activeAgents = new Map<string, SubagentState>();
 	private extensionResolvedPath: string;
 
 	onWidgetUpdate: (() => void) | undefined;
+	isIdle: (() => boolean) | undefined;
 
 	constructor(extensionResolvedPath: string) {
 		this.extensionResolvedPath = extensionResolvedPath;
@@ -129,8 +69,19 @@ export class CrewManager {
 		ctx: ExtensionContext,
 		pi: ExtensionAPI,
 	): string {
-		const id = generateId(agentConfig.name);
-		const state = this.createState(id, agentConfig, task);
+		const existingIds = new Set(this.activeAgents.keys());
+		const id = generateId(agentConfig.name, existingIds);
+		const state: SubagentState = {
+			id,
+			agentConfig,
+			task,
+			status: "running",
+			ownerSessionFile: parentSessionFile,
+			session: null,
+			turns: 0,
+			contextTokens: 0,
+			model: undefined,
+		};
 
 		this.activeAgents.set(id, state);
 		this.onWidgetUpdate?.();
@@ -139,75 +90,9 @@ export class CrewManager {
 		return id;
 	}
 
-	private createState(
-		id: string,
-		agentConfig: AgentConfig,
-		task: string,
-	): SubagentState {
-		return {
-			id,
-			agentConfig,
-			task,
-			status: "running",
-			session: null,
-			turns: 0,
-			contextTokens: 0,
-			model: undefined,
-			aborted: false,
-		};
-	}
-
-	private resolveModel(agentConfig: AgentConfig, ctx: ExtensionContext, modelRegistry: ModelRegistry) {
-		let model = ctx.model;
-		if (!agentConfig.model) {
-			return model;
-		}
-
-		const parsed = parseModel(agentConfig.model);
-		if (!parsed) {
-			return model;
-		}
-
-		const found = modelRegistry.find(parsed.provider, parsed.modelId);
-		if (found) {
-			return found;
-		}
-
-		console.warn(
-			`[pi-crew] Agent "${agentConfig.name}": model "${agentConfig.model}" not found in registry, using default`,
-		);
-		return model;
-	}
-
-	private createResourceLoader(cwd: string, agentConfig: AgentConfig): DefaultResourceLoader {
-		const extensionPath = this.extensionResolvedPath;
-		const configSkills = agentConfig.skills;
-		const systemPromptBody = agentConfig.systemPrompt;
-
-		return new DefaultResourceLoader({
-			cwd,
-			extensionsOverride: (base) => ({
-				...base,
-				extensions: base.extensions.filter(
-					(ext) => !ext.resolvedPath.startsWith(extensionPath),
-				),
-			}),
-			skillsOverride: configSkills
-				? (base) => ({
-						skills: base.skills.filter((s) => configSkills.includes(s.name)),
-						diagnostics: base.diagnostics,
-					})
-				: undefined,
-			appendSystemPromptOverride: (base) =>
-				systemPromptBody.trim() ? [...base, systemPromptBody] : base,
-		});
-	}
-
 	private attachSessionListeners(state: SubagentState, session: AgentSession): void {
 		session.subscribe((event) => {
-			if (event.type !== "turn_end") {
-				return;
-			}
+			if (event.type !== "turn_end") return;
 
 			state.turns++;
 			const msg = event.message;
@@ -220,52 +105,29 @@ export class CrewManager {
 		});
 	}
 
-	private completeAgent(state: SubagentState, session: AgentSession, pi: ExtensionAPI): void {
-		state.result = extractLastAssistantText(session.messages) ?? "(no output)";
-		state.status = "done";
-		this.sendAgentResult(pi, state, "completed");
-	}
-
-	private failAgent(state: SubagentState, err: unknown, pi: ExtensionAPI): void {
-		state.status = "error";
-		state.error = err instanceof Error ? err.message : String(err);
-		this.sendAgentResult(pi, state, "failed");
-	}
-
-	private sendAgentResult(
-		pi: ExtensionAPI,
-		state: SubagentState,
-		status: AgentResultStatus,
-	): void {
-		const isError = status !== "completed";
-		const details = {
-			agentId: state.id,
-			agentName: state.agentConfig.name,
-			error: isError,
-		};
-
-		let content: string;
-		if (status === "completed") {
-			content = `**✅ Agent '${state.agentConfig.name}' (${state.id}) completed**\n\n${state.result ?? "(no output)"}`;
-		} else if (status === "aborted") {
-			content = `**⏹️ Agent '${state.agentConfig.name}' (${state.id}) aborted**`;
-		} else {
-			content = `**❌ Agent '${state.agentConfig.name}' (${state.id}) failed**\n\n${state.error ?? "Unknown error"}`;
-		}
-
-		pi.sendMessage(
+	private finalizeAgent(state: SubagentState, pi: ExtensionAPI): void {
+		sendSteeringMessage(
 			{
-				customType: "crew-result",
-				content,
-				display: true,
-				details,
+				id: state.id,
+				agentName: state.agentConfig.name,
+				status: state.status,
+				result: state.result,
+				error: state.error,
 			},
-			{ deliverAs: "steer", triggerTurn: true },
+			pi,
+			this.isIdle?.() ?? true,
 		);
+
+		if (state.status !== "waiting") {
+			this.disposeAgent(state);
+		} else {
+			this.onWidgetUpdate?.();
+		}
 	}
 
-	private removeAgent(id: string): void {
-		this.activeAgents.delete(id);
+	private disposeAgent(state: SubagentState): void {
+		state.session?.dispose();
+		this.activeAgents.delete(state.id);
 		this.onWidgetUpdate?.();
 	}
 
@@ -276,85 +138,106 @@ export class CrewManager {
 		ctx: ExtensionContext,
 		pi: ExtensionAPI,
 	): Promise<void> {
-		let sessionResult: CreateAgentSessionResult | undefined;
-
 		try {
-			if (state.aborted) {
-				return;
-			}
+			if (isAborted(state)) return;
 
-			const authStorage = AuthStorage.create();
-			const modelRegistry = new ModelRegistry(authStorage);
-			const model = this.resolveModel(state.agentConfig, ctx, modelRegistry);
-			const thinkingLevel = resolveThinkingLevel(state.agentConfig.thinking);
-			const tools = resolveTools(state.agentConfig.tools, cwd);
-			const resourceLoader = this.createResourceLoader(cwd, state.agentConfig);
-			await resourceLoader.reload();
-			if (state.aborted) {
-				return;
-			}
-
-			const settingsManager = SettingsManager.inMemory({
-				compaction: { enabled: state.agentConfig.compaction ?? true },
-			});
-
-			const sessionManager = SessionManager.create(cwd);
-			sessionManager.newSession({
-				parentSession: parentSessionFile,
-			});
-
-			sessionResult = await createAgentSession({
+			const sessionResult = await bootstrapSession({
+				agentConfig: state.agentConfig,
 				cwd,
-				model,
-				thinkingLevel,
-				tools,
-				resourceLoader,
-				sessionManager,
-				settingsManager,
-				authStorage,
-				modelRegistry,
+				ctx,
+				extensionResolvedPath: this.extensionResolvedPath,
+				parentSessionFile,
 			});
 
 			const { session } = sessionResult;
 			state.session = session;
-			if (state.aborted) {
-				return;
-			}
+			if (isAborted(state)) return;
 
 			this.attachSessionListeners(state, session);
 			await session.prompt(state.task);
-			if (state.aborted) {
-				return;
-			}
+			if (isAborted(state)) return;
 
-			this.completeAgent(state, session, pi);
+			state.result = extractLastAssistantText(session.messages) ?? "(no output)";
+			state.status = state.agentConfig.interactive ? "waiting" : "done";
+			this.finalizeAgent(state, pi);
 		} catch (err) {
-			if (state.aborted) {
-				return;
-			}
+			if (isAborted(state)) return;
 
-			this.failAgent(state, err, pi);
+			state.status = "error";
+			state.error = err instanceof Error ? err.message : String(err);
+			this.finalizeAgent(state, pi);
 		} finally {
-			this.removeAgent(state.id);
-			sessionResult?.session.dispose();
+			if (!this.activeAgents.has(state.id)) {
+				// Agent removed (by abort or finalize) but session may have been
+				// created after removal. Dispose to prevent leak.
+				state.session?.dispose();
+			} else if (state.status !== "waiting") {
+				this.disposeAgent(state);
+			}
 		}
+	}
+
+	respond(
+		id: string,
+		message: string,
+		pi: ExtensionAPI,
+		callerSessionFile: string | undefined,
+	): { error?: string } {
+		const state = this.activeAgents.get(id);
+		if (!state) return { error: `No agent with id "${id}"` };
+		if (state.ownerSessionFile !== callerSessionFile) {
+			return { error: `Agent "${id}" belongs to a different session` };
+		}
+		if (state.status !== "waiting") {
+			return { error: `Agent "${id}" is not waiting for a response (status: ${state.status})` };
+		}
+		if (!state.session) return { error: `Agent "${id}" has no active session` };
+
+		state.status = "running";
+		this.onWidgetUpdate?.();
+		void this.runFollowUp(state, message, pi);
+		return {};
+	}
+
+	private async runFollowUp(state: SubagentState, message: string, pi: ExtensionAPI): Promise<void> {
+		try {
+			await state.session!.prompt(message);
+			if (isAborted(state)) return;
+
+			state.result = extractLastAssistantText(state.session!.messages) ?? "(no output)";
+			state.status = state.agentConfig.interactive ? "waiting" : "done";
+			this.finalizeAgent(state, pi);
+		} catch (err) {
+			if (isAborted(state)) return;
+
+			state.status = "error";
+			state.error = err instanceof Error ? err.message : String(err);
+			this.finalizeAgent(state, pi);
+		}
+	}
+
+	done(id: string, callerSessionFile: string | undefined): { error?: string } {
+		const state = this.activeAgents.get(id);
+		if (!state) return { error: `No active agent with id "${id}"` };
+		if (state.ownerSessionFile !== callerSessionFile) {
+			return { error: `Agent "${id}" belongs to a different session` };
+		}
+		if (state.status !== "waiting") {
+			return { error: `Agent "${id}" is not in waiting state` };
+		}
+
+		this.disposeAgent(state);
+		return {};
 	}
 
 	abort(id: string, pi: ExtensionAPI): boolean {
 		const state = this.activeAgents.get(id);
 		if (!state) return false;
 
-		if (state.session) {
-			state.session.abort().catch(() => {});
-			state.session.dispose();
-		}
-
-		state.aborted = true;
-		state.status = "error";
+		state.status = "aborted";
 		state.error = "Aborted by user";
-		this.removeAgent(id);
-		this.sendAgentResult(pi, state, "aborted");
-
+		state.session?.abort().catch(() => {});
+		this.finalizeAgent(state, pi);
 		return true;
 	}
 
@@ -364,13 +247,17 @@ export class CrewManager {
 		}
 	}
 
-	getRunning(): SubagentState[] {
+	getActive(): SubagentState[] {
 		return Array.from(this.activeAgents.values()).filter(
-			(s) => s.status === "running",
+			(s) => s.status === "running" || s.status === "waiting",
 		);
 	}
 
-	get(id: string): SubagentState | undefined {
-		return this.activeAgents.get(id);
+	getActiveForOwner(ownerSessionFile: string | undefined): SubagentState[] {
+		return Array.from(this.activeAgents.values()).filter(
+			(s) =>
+				(s.status === "running" || s.status === "waiting") &&
+				s.ownerSessionFile === ownerSessionFile,
+		);
 	}
 }
