@@ -11,6 +11,10 @@ pi install @melihmucuk/pi-crew
 This installs the extension and bundled prompt template.
 If you want to use the bundled subagents like `code-reviewer` and `quality-reviewer`, complete the setup in [Bundled Subagents Setup](#bundled-subagents-setup) first.
 
+## Architecture
+
+For an implementation-grounded description of runtime behavior, ownership rules, delivery semantics, and integration points, see [docs/architecture.md](./docs/architecture.md).
+
 ## How It Works
 
 pi-crew adds five tools, one command, and one bundled prompt template to your pi session.

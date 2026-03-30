@@ -6,6 +6,10 @@
 - Each subagent runs in an isolated SDK session; results are delivered as steering messages to the owner session that spawned them.
 - Interactive subagents (`interactive: true`) stay alive after responding and support multi-turn conversations via `crew_respond` / `crew_done`.
 
+## Reference
+
+- Detailed runtime architecture reference: `/Users/melihmucuk/github/pi-crew/docs/architecture.md`
+
 ## Rules / Guardrails
 
 ### Architecture
