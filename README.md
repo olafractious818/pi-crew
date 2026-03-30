@@ -2,6 +2,10 @@
 
 Non-blocking subagent orchestration for [pi](https://pi.dev). Spawn isolated subagents that work in parallel while your current session stays interactive. Results are delivered back to the session that spawned them as steering messages when done.
 
+## Demo - Watch the Video
+
+[![Demo](https://raw.githubusercontent.com/melihmucuk/pi-crew/main/assets/demo-thumbnail.png)](https://monkeys-team.ams3.cdn.digitaloceanspaces.com/pi-crew-demo.mp4)
+
 ## Install
 
 ```bash
@@ -182,6 +186,13 @@ When the current session owns active subagents, a live status widget appears in 
 ```
 
 Interactive subagents waiting for a response show a ⏳ icon instead of a spinner.
+
+## Acknowledgments
+
+Inspired by these projects:
+
+- [pi-subagents](https://github.com/nicobailon/pi-subagents) by [@nicobailon](https://github.com/nicobailon)
+- [pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) by [@HazAT](https://github.com/HazAT)
 
 ## License
 

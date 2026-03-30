@@ -25,7 +25,8 @@
     ],
     "prompts": [
       "./prompts"
-    ]
+    ],
+    "video": "https://monkeys-team.ams3.cdn.digitaloceanspaces.com/pi-crew-demo.mp4"
   },
   "scripts": {
     "clean": "rm -rf dist",
