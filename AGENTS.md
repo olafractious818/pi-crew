@@ -30,7 +30,7 @@
 - Owner identity must use `sessionManager.getSessionId()`, not `getSessionFile()`. `getSessionFile()` returns `undefined` for in-memory sessions, causing all unsaved sessions to share the same owner identity.
 - Each subagent is owned by the session that spawned it. `crew_list`, `crew_abort`, `crew_respond`, `crew_done`, `session_shutdown`, and the status widget must restrict access to the owner session. Removing or bypassing ownership checks causes cross-session subagent interference.
 - `crew_abort` must only abort subagents owned by the current session. It supports single-id, multi-id, and abort-all modes.
-- `/crew-abort` is intentionally unrestricted — it serves as an emergency escape hatch across all sessions. Do not add ownership checks to it.
+- `/pi-crew:abort` is intentionally unrestricted — it serves as an emergency escape hatch across all sessions. Do not add ownership checks to it.
 
 ### Subagent Definitions
 

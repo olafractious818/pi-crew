@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { CrewManager } from "../runner.js";
 
 export function registerCrewCommand(pi: ExtensionAPI, crewManager: CrewManager): void {
-	pi.registerCommand("crew-abort", {
+	pi.registerCommand("pi-crew:abort", {
 		description: "Abort an active subagent",
 
 		getArgumentCompletions(argumentPrefix) {

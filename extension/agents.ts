@@ -33,6 +33,21 @@ interface AgentDiscoveryResult {
 	warnings: AgentDiscoveryWarning[];
 }
 
+interface ParseResult {
+	agent: AgentConfig | null;
+	warnings: AgentDiscoveryWarning[];
+}
+
+interface FileLoadResult {
+	content: string | null;
+	warnings: AgentDiscoveryWarning[];
+}
+
+interface DirectoryLoadResult {
+	filePaths: string[];
+	warnings: AgentDiscoveryWarning[];
+}
+
 const VALID_THINKING_LEVELS: readonly string[] = [
 	"off",
 	"minimal",
@@ -42,13 +57,8 @@ const VALID_THINKING_LEVELS: readonly string[] = [
 	"xhigh",
 ];
 
-function reportDiscoveryWarning(
-	filePath: string,
-	message: string,
-	onWarning?: (warning: AgentDiscoveryWarning) => void,
-): void {
-	onWarning?.({ filePath, message });
-	console.warn(`[pi-crew] ${message} (${filePath})`);
+function createDiscoveryWarning(filePath: string, message: string): AgentDiscoveryWarning {
+	return { filePath, message };
 }
 
 /**
@@ -77,19 +87,21 @@ function parseListField(
 	value: unknown,
 	filePath: string,
 	agentName: string,
-	onWarning?: (warning: AgentDiscoveryWarning) => void,
-): string[] {
-	if (value == null) return [];
+): { values: string[]; warnings: AgentDiscoveryWarning[] } {
+	if (value == null) return { values: [], warnings: [] };
 
 	const parsed = parseCommaSeparated(value);
-	if (parsed !== undefined) return parsed;
+	if (parsed !== undefined) return { values: parsed, warnings: [] };
 
-	reportDiscoveryWarning(
-		filePath,
-		`Subagent "${agentName}": invalid ${fieldName} field, expected a comma-separated string or YAML array`,
-		onWarning,
-	);
-	return [];
+	return {
+		values: [],
+		warnings: [
+			createDiscoveryWarning(
+				filePath,
+				`Subagent "${agentName}": invalid ${fieldName} field, expected a comma-separated string or YAML array`,
+			),
+		],
+	};
 }
 
 /**
@@ -116,16 +128,8 @@ function validateThinkingLevel(value: string | undefined): ThinkingLevel | undef
 	return undefined;
 }
 
-function loadAgentFromFile(
-	filePath: string,
-	onWarning?: (warning: AgentDiscoveryWarning) => void,
-): AgentConfig | null {
-	let content: string;
-	try {
-		content = fs.readFileSync(filePath, "utf-8");
-	} catch {
-		return null;
-	}
+export function parseAgentDefinition(content: string, filePath: string): ParseResult {
+	const warnings: AgentDiscoveryWarning[] = [];
 
 	let frontmatter: Record<string, unknown>;
 	let body: string;
@@ -135,110 +139,197 @@ function loadAgentFromFile(
 		body = parsed.body;
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		reportDiscoveryWarning(filePath, `Ignored invalid subagent definition. Frontmatter could not be parsed: ${reason}`, onWarning);
-		return null;
+		return {
+			agent: null,
+			warnings: [
+				createDiscoveryWarning(
+					filePath,
+					`Ignored invalid subagent definition. Frontmatter could not be parsed: ${reason}`,
+				),
+			],
+		};
 	}
 
 	const name = typeof frontmatter.name === "string" ? frontmatter.name.trim() : undefined;
 	const description = typeof frontmatter.description === "string" ? frontmatter.description.trim() : undefined;
 
 	if (!name || !description) {
-		reportDiscoveryWarning(
-			filePath,
-			"Ignored invalid subagent definition. Required frontmatter fields \"name\" and \"description\" must be non-empty strings.",
-			onWarning,
-		);
-		return null;
+		return {
+			agent: null,
+			warnings: [
+				createDiscoveryWarning(
+					filePath,
+					'Ignored invalid subagent definition. Required frontmatter fields "name" and "description" must be non-empty strings.',
+				),
+			],
+		};
 	}
 
 	if (/\s/.test(name)) {
-		reportDiscoveryWarning(filePath, `Ignored subagent definition "${name}". Subagent names cannot contain whitespace. Use "-" instead.`, onWarning);
-		return null;
+		return {
+			agent: null,
+			warnings: [
+				createDiscoveryWarning(
+					filePath,
+					`Ignored subagent definition "${name}". Subagent names cannot contain whitespace. Use "-" instead.`,
+				),
+			],
+		};
 	}
 
 	const modelRaw = typeof frontmatter.model === "string" ? frontmatter.model : undefined;
 	const parsedModel = modelRaw ? parseModel(modelRaw) : undefined;
-
 	if (modelRaw && !parsedModel) {
-		reportDiscoveryWarning(filePath, `Subagent "${name}": invalid model format "${modelRaw}" (expected "provider/model-id"), ignoring model field`, onWarning);
+		warnings.push(
+			createDiscoveryWarning(
+				filePath,
+				`Subagent "${name}": invalid model format "${modelRaw}" (expected "provider/model-id"), ignoring model field`,
+			),
+		);
 	}
 
 	const thinkingRaw = typeof frontmatter.thinking === "string" ? frontmatter.thinking : undefined;
 	const thinking = validateThinkingLevel(thinkingRaw);
-
 	if (thinkingRaw && !thinking) {
-		reportDiscoveryWarning(filePath, `Subagent "${name}": invalid thinking level "${thinkingRaw}", ignoring`, onWarning);
+		warnings.push(
+			createDiscoveryWarning(
+				filePath,
+				`Subagent "${name}": invalid thinking level "${thinkingRaw}", ignoring`,
+			),
+		);
 	}
 
-	const rawTools = "tools" in frontmatter
-		? parseListField("tools", frontmatter.tools, filePath, name, onWarning)
+	const toolsField = "tools" in frontmatter
+		? parseListField("tools", frontmatter.tools, filePath, name)
 		: undefined;
+	const rawTools = toolsField?.values;
+	if (toolsField) warnings.push(...toolsField.warnings);
 	const invalidTools = rawTools?.filter((toolName) => !isSupportedToolName(toolName)) ?? [];
 	if (invalidTools.length > 0) {
-		reportDiscoveryWarning(
-			filePath,
-			`Subagent "${name}": unknown tools ${invalidTools.map((toolName) => `"${toolName}"`).join(", ")}, ignoring`,
-			onWarning,
+		warnings.push(
+			createDiscoveryWarning(
+				filePath,
+				`Subagent "${name}": unknown tools ${invalidTools.map((toolName) => `"${toolName}"`).join(", ")}, ignoring`,
+			),
 		);
 	}
 	const tools = rawTools?.filter(isSupportedToolName) ?? undefined;
 
-	const skills = "skills" in frontmatter
-		? parseListField("skills", frontmatter.skills, filePath, name, onWarning)
+	const skillsField = "skills" in frontmatter
+		? parseListField("skills", frontmatter.skills, filePath, name)
 		: undefined;
+	if (skillsField) warnings.push(...skillsField.warnings);
+	const skills = skillsField?.values ?? undefined;
 
 	const compaction = typeof frontmatter.compaction === "boolean" ? frontmatter.compaction : undefined;
 	const interactive = typeof frontmatter.interactive === "boolean" ? frontmatter.interactive : undefined;
 
 	return {
-		name,
-		description,
-		model: modelRaw,
-		parsedModel: parsedModel ?? undefined,
-		thinking,
-		tools,
-		skills,
-		compaction,
-		interactive,
-		systemPrompt: body,
-		filePath,
+		agent: {
+			name,
+			description,
+			model: modelRaw,
+			parsedModel: parsedModel ?? undefined,
+			thinking,
+			tools,
+			skills,
+			compaction,
+			interactive,
+			systemPrompt: body,
+			filePath,
+		},
+		warnings,
+	};
+}
+
+function loadAgentFile(filePath: string): FileLoadResult {
+	try {
+		return {
+			content: fs.readFileSync(filePath, "utf-8"),
+			warnings: [],
+		};
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		return {
+			content: null,
+			warnings: [
+				createDiscoveryWarning(
+					filePath,
+					`Ignored subagent definition. File could not be read: ${reason}`,
+				),
+			],
+		};
+	}
+}
+
+function loadAgentDefinitionFromFile(filePath: string): ParseResult {
+	const file = loadAgentFile(filePath);
+	if (!file.content) {
+		return { agent: null, warnings: file.warnings };
+	}
+
+	const parsed = parseAgentDefinition(file.content, filePath);
+	return {
+		agent: parsed.agent,
+		warnings: [...file.warnings, ...parsed.warnings],
+	};
+}
+
+function loadAgentDefinitionFiles(agentsDir: string): DirectoryLoadResult {
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		return {
+			filePaths: [],
+			warnings: [
+				createDiscoveryWarning(
+					agentsDir,
+					`Subagent directory could not be read: ${reason}`,
+				),
+			],
+		};
+	}
+
+	return {
+		filePaths: entries
+			.filter((entry) => entry.name.endsWith(".md"))
+			.filter((entry) => entry.isFile() || entry.isSymbolicLink())
+			.map((entry) => path.join(agentsDir, entry.name)),
+		warnings: [],
 	};
 }
 
 export function discoverAgents(): AgentDiscoveryResult {
 	const agentsDir = path.join(getAgentDir(), "agents");
-
 	if (!fs.existsSync(agentsDir)) {
 		return { agents: [], warnings: [] };
 	}
 
-	let entries: fs.Dirent[];
-	try {
-		entries = fs.readdirSync(agentsDir, { withFileTypes: true });
-	} catch {
-		return { agents: [], warnings: [] };
-	}
-
+	const fileLoad = loadAgentDefinitionFiles(agentsDir);
 	const agents: AgentConfig[] = [];
-	const warnings: AgentDiscoveryWarning[] = [];
+	const warnings: AgentDiscoveryWarning[] = [...fileLoad.warnings];
 	const seenNames = new Map<string, string>();
 
-	for (const entry of entries) {
-		if (!entry.name.endsWith(".md")) continue;
-		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+	for (const filePath of fileLoad.filePaths) {
+		const loaded = loadAgentDefinitionFromFile(filePath);
+		warnings.push(...loaded.warnings);
+		if (!loaded.agent) continue;
 
-		const filePath = path.join(agentsDir, entry.name);
-		const agent = loadAgentFromFile(filePath, (warning) => warnings.push(warning));
-		if (!agent) continue;
-
-		const existing = seenNames.get(agent.name);
+		const existing = seenNames.get(loaded.agent.name);
 		if (existing) {
-			reportDiscoveryWarning(filePath, `Duplicate subagent name "${agent.name}" (already defined in ${existing}), skipping`, (warning) => warnings.push(warning));
+			warnings.push(
+				createDiscoveryWarning(
+					filePath,
+					`Duplicate subagent name "${loaded.agent.name}" (already defined in ${existing}), skipping`,
+				),
+			);
 			continue;
 		}
 
-		seenNames.set(agent.name, filePath);
-		agents.push(agent);
+		seenNames.set(loaded.agent.name, filePath);
+		agents.push(loaded.agent);
 	}
 
 	return { agents, warnings };

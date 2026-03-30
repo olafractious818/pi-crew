@@ -8,9 +8,12 @@ Non-blocking subagent orchestration for [pi](https://pi.dev). Spawn isolated sub
 pi install @melihmucuk/pi-crew
 ```
 
+This installs the extension and bundled prompt template.
+If you want to use the bundled subagents like `code-reviewer` and `quality-reviewer`, complete the setup in [Bundled Subagents Setup](#bundled-subagents-setup) first.
+
 ## How It Works
 
-pi-crew adds five tools and one command to your pi session:
+pi-crew adds five tools, one command, and one bundled prompt template to your pi session.
 
 ### `crew_list`
 
@@ -29,6 +32,7 @@ Spawns a subagent in an isolated session. The subagent runs in the background wi
 Aborts one, many, or all active subagents owned by the current session.
 
 Supported modes:
+
 - single: `subagent_id`
 - multiple: `subagent_ids`
 - all active in current session: `all: true`
@@ -57,22 +61,29 @@ Closes an interactive subagent session when you no longer need it. This disposes
 "close planner-a1b2, the plan looks good"
 ```
 
-### `/crew-abort`
+### `/pi-crew:abort`
 
 Aborts a running subagent. Supports tab completion for subagent IDs.
 Unlike the `crew_abort` tool, this command is intentionally unrestricted and works as an emergency escape hatch across sessions.
+
+### `/pi-crew:review`
+
+Expands a bundled prompt template that orchestrates parallel code and quality reviews.
+Use it to review recent commits, staged changes, unstaged changes, and untracked files with `code-reviewer` and `quality-reviewer`, then merge both results into one report.
+
+Note: This prompt requires the `code-reviewer` and `quality-reviewer` subagent definitions to be present in `~/.pi/agent/agents/`. If you use the bundled subagents from this package, copy them first as described in the setup section below.
 
 ## Bundled Subagents
 
 pi-crew ships with five subagent definitions that cover common workflows:
 
-| Subagent             | Purpose                                                                                                                  | Tools                      | Model             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ----------------- |
-| **scout**            | Investigates codebase and returns structured findings. Read-only. Use before planning or implementing to gather context. | read, grep, find, ls, bash | claude-haiku-4-5  |
-| **planner**          | Analyzes requirements and produces a step-by-step implementation plan. Read-only. Does not write code. Interactive.      | read, grep, find, ls, bash | gpt-5.4           |
-| **code-reviewer**    | Reviews code changes for bugs, security issues, and correctness. Read-only. Does not fix issues.                         | read, grep, find, ls, bash | gpt-5.4           |
-| **quality-reviewer** | Reviews code structure for maintainability, duplication, and complexity. Read-only. Does not look for bugs.              | read, grep, find, ls, bash | gpt-5.4           |
-| **worker**           | Implements code changes, fixes, and refactors autonomously. Has full read-write access to the codebase.                  | all                        | claude-sonnet-4-6 |
+| Subagent             | Purpose                                                                                                                  | Tools                      | Model                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------- | --------------------------- |
+| **scout**            | Investigates codebase and returns structured findings. Read-only. Use before planning or implementing to gather context. | read, grep, find, ls, bash | anthropic/claude-haiku-4-5  |
+| **planner**          | Analyzes requirements and produces a step-by-step implementation plan. Read-only. Does not write code. Interactive.      | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
+| **code-reviewer**    | Reviews code changes for bugs, security issues, and correctness. Read-only. Does not fix issues.                         | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
+| **quality-reviewer** | Reviews code structure for maintainability, duplication, and complexity. Read-only. Does not look for bugs.              | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
+| **worker**           | Implements code changes, fixes, and refactors autonomously. Has full read-write access to the codebase.                  | all                        | anthropic/claude-sonnet-4-6 |
 
 Read-only bundled subagents still keep `bash` for inspection workflows like `git` and `ast-grep`. This is an instruction-level contract, not a sandbox boundary.
 
@@ -107,16 +118,16 @@ The subagent will follow these instructions when executing tasks.
 
 ### Frontmatter Fields
 
-| Field         | Required | Description                                                                                     |
-| ------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `name`        | yes      | Subagent identifier. No whitespace, use hyphens.                                                |
-| `description` | yes      | Shown in `crew_list` output.                                                                    |
-| `model`       | no       | `provider/model-id` format (e.g., `anthropic/claude-haiku-4-5`). Falls back to session default. |
-| `thinking`    | no       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.                             |
+| Field         | Required | Description                                                                                                          |
+| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `name`        | yes      | Subagent identifier. No whitespace, use hyphens.                                                                     |
+| `description` | yes      | Shown in `crew_list` output.                                                                                         |
+| `model`       | no       | `provider/model-id` format (e.g., `anthropic/claude-haiku-4-5`). Falls back to session default.                      |
+| `thinking`    | no       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.                                                  |
 | `tools`       | no       | Comma-separated list: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. Omit for all, use empty value for none. |
-| `skills`      | no       | Comma-separated skill names (e.g., `ast-grep`). Omit for all, use empty value for none.         |
-| `compaction`  | no       | Enable context compaction. Defaults to `true`.                                                  |
-| `interactive` | no       | Keep session alive after response for multi-turn conversations. Defaults to `false`.            |
+| `skills`      | no       | Comma-separated skill names (e.g., `ast-grep`). Omit for all, use empty value for none.                              |
+| `compaction`  | no       | Enable context compaction. Defaults to `true`.                                                                       |
+| `interactive` | no       | Keep session alive after response for multi-turn conversations. Defaults to `false`.                                 |
 
 ## Status Widget
 

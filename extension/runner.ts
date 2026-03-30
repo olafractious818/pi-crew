@@ -1,39 +1,20 @@
-import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AgentConfig } from "./agents.js";
 import { bootstrapSession } from "./session-factory.js";
-import { type SteeringPayload, type SubagentStatus, sendRemainingNote, sendSteeringMessage } from "./steering.js";
+import { DeliveryCoordinator } from "./runner/delivery-coordinator.js";
+import { SubagentRegistry } from "./runner/subagent-registry.js";
+import {
+	type AbortableAgentSummary,
+	type ActiveAgentSummary,
+	type SubagentState,
+	isAbortableStatus,
+	isAborted,
+} from "./runner/state.js";
+import type { SubagentStatus } from "./steering.js";
 
-interface SubagentState {
-	id: string;
-	agentConfig: AgentConfig;
-	task: string;
-	status: SubagentStatus;
-	ownerSessionId: string;
-	session: AgentSession | null;
-	turns: number;
-	contextTokens: number;
-	model: string | undefined;
-	error?: string;
-	result?: string;
-}
-
-export interface ActiveAgentSummary {
-	id: string;
-	agentName: string;
-	status: SubagentStatus;
-	taskPreview: string;
-	turns: number;
-	contextTokens: number;
-	model: string | undefined;
-}
-
-export interface AbortableAgentSummary {
-	id: string;
-	agentName: string;
-}
+export type { AbortableAgentSummary, ActiveAgentSummary } from "./runner/state.js";
 
 export interface AbortOwnedResult {
 	abortedIds: string[];
@@ -45,66 +26,63 @@ interface AbortOptions {
 	reason: string;
 }
 
-function generateId(name: string, existingIds: Set<string>): string {
-	for (let i = 0; i < 10; i++) {
-		const id = `${name}-${randomBytes(4).toString("hex")}`;
-		if (!existingIds.has(id)) return id;
-	}
-	return `${name}-${randomBytes(8).toString("hex")}`;
+interface PromptOutcome {
+	status: Extract<SubagentStatus, "done" | "waiting" | "error" | "aborted">;
+	result?: string;
+	error?: string;
 }
 
-// Status may change externally via abort(). Standalone function avoids TS narrowing.
-function isAborted(state: SubagentState): boolean {
-	return state.status === "aborted";
-}
-
-function extractLastAssistantText(messages: AgentMessage[]): string | undefined {
+function getLastAssistantMessage(messages: AgentMessage[]): AssistantMessage | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (msg.role === "assistant") {
-			const assistantMsg = msg as AssistantMessage;
-			const texts: string[] = [];
-			for (const part of assistantMsg.content) {
-				if (part.type === "text") {
-					texts.push(part.text);
-				}
-			}
-			if (texts.length > 0) return texts.join("\n");
+			return msg as AssistantMessage;
 		}
 	}
 	return undefined;
 }
 
-function buildActiveAgentSummary(state: SubagentState): ActiveAgentSummary {
-	const taskPreview = state.task.length > 80 ? `${state.task.slice(0, 80)}...` : state.task;
-	return {
-		id: state.id,
-		agentName: state.agentConfig.name,
-		status: state.status,
-		taskPreview,
-		turns: state.turns,
-		contextTokens: state.contextTokens,
-		model: state.model,
-	};
+function getAssistantText(message: AssistantMessage | undefined): string | undefined {
+	if (!message) return undefined;
+
+	const texts: string[] = [];
+	for (const part of message.content) {
+		if (part.type === "text") {
+			texts.push(part.text);
+		}
+	}
+
+	return texts.length > 0 ? texts.join("\n") : undefined;
 }
 
-function buildAbortableAgentSummary(state: SubagentState): AbortableAgentSummary {
-	return {
-		id: state.id,
-		agentName: state.agentConfig.name,
-	};
-}
+function getPromptOutcome(state: SubagentState): PromptOutcome {
+	const lastAssistant = getLastAssistantMessage(state.session!.messages);
+	const text = getAssistantText(lastAssistant);
 
-function isAbortableStatus(status: SubagentStatus): boolean {
-	return status === "running" || status === "waiting";
+	if (lastAssistant?.stopReason === "error") {
+		return {
+			status: "error",
+			error: lastAssistant.errorMessage ?? text ?? "(no output)",
+		};
+	}
+
+	if (lastAssistant?.stopReason === "aborted") {
+		return {
+			status: "aborted",
+			error: lastAssistant.errorMessage ?? text ?? "(no output)",
+		};
+	}
+
+	return {
+		status: state.agentConfig.interactive ? "waiting" : "done",
+		result: text ?? "(no output)",
+	};
 }
 
 export class CrewManager {
-	private activeAgents = new Map<string, SubagentState>();
 	private extensionResolvedPath: string;
-	private currentSessionId: string | undefined;
-	private currentIsIdle: () => boolean = () => true;
-	private pendingMessages: { ownerSessionId: string; payload: SteeringPayload }[] = [];
+	private registry = new SubagentRegistry();
+	private delivery = new DeliveryCoordinator();
 
 	onWidgetUpdate: (() => void) | undefined;
 
@@ -113,32 +91,12 @@ export class CrewManager {
 	}
 
 	activateSession(sessionId: string, isIdle: () => boolean, pi: ExtensionAPI): void {
-		this.currentSessionId = sessionId;
-		this.currentIsIdle = isIdle;
-		// Delay flush to next macrotask. session_switch fires before pi-core
-		// calls _reconnectToAgent(), so synchronous delivery would emit agent
-		// events while the session listener is disconnected, losing JSONL persistence.
-		if (this.pendingMessages.some(e => e.ownerSessionId === sessionId)) {
-			setTimeout(() => this.flushPending(pi), 0);
-		}
-	}
-
-	private flushPending(pi: ExtensionAPI): void {
-		const toDeliver: typeof this.pendingMessages = [];
-		const remaining: typeof this.pendingMessages = [];
-
-		for (const entry of this.pendingMessages) {
-			if (entry.ownerSessionId === this.currentSessionId) {
-				toDeliver.push(entry);
-			} else {
-				remaining.push(entry);
-			}
-		}
-
-		this.pendingMessages = remaining;
-		for (const entry of toDeliver) {
-			this.deliverPayload(entry.ownerSessionId, entry.payload, pi);
-		}
+		this.delivery.activateSession(
+			sessionId,
+			isIdle,
+			pi,
+			(ownerSessionId, excludeId) => this.registry.countRunningForOwner(ownerSessionId, excludeId),
+		);
 	}
 
 	spawn(
@@ -149,25 +107,10 @@ export class CrewManager {
 		ctx: ExtensionContext,
 		pi: ExtensionAPI,
 	): string {
-		const existingIds = new Set(this.activeAgents.keys());
-		const id = generateId(agentConfig.name, existingIds);
-		const state: SubagentState = {
-			id,
-			agentConfig,
-			task,
-			status: "running",
-			ownerSessionId,
-			session: null,
-			turns: 0,
-			contextTokens: 0,
-			model: undefined,
-		};
-
-		this.activeAgents.set(id, state);
+		const state = this.registry.create(agentConfig, task, ownerSessionId);
 		this.onWidgetUpdate?.();
 		void this.spawnSession(state, cwd, ctx.sessionManager.getSessionFile(), ctx, pi);
-
-		return id;
+		return state.id;
 	}
 
 	private attachSessionListeners(state: SubagentState, session: AgentSession): void {
@@ -186,53 +129,13 @@ export class CrewManager {
 	}
 
 	private attachSpawnedSession(state: SubagentState, session: AgentSession): boolean {
-		if (this.activeAgents.get(state.id) !== state) {
+		if (!this.registry.hasState(state)) {
 			session.dispose();
 			return false;
 		}
 
 		state.session = session;
 		return true;
-	}
-
-	private countRunningForOwner(ownerSessionId: string, excludeId: string): number {
-		let count = 0;
-		for (const state of this.activeAgents.values()) {
-			if (
-				state.id !== excludeId &&
-				state.ownerSessionId === ownerSessionId &&
-				state.status === "running"
-			) {
-				count++;
-			}
-		}
-		return count;
-	}
-
-	/**
-	 * Delivers a payload to the owner session if active, otherwise queues it.
-	 * Result messages always go first. If more subagents are still running and the
-	 * owner is idle, queue the result without triggering, then queue the separate
-	 * remaining note with triggerTurn so the next turn sees both in order.
-	 */
-	private deliverPayload(ownerSessionId: string, payload: SteeringPayload, pi: ExtensionAPI): void {
-		if (ownerSessionId !== this.currentSessionId) {
-			this.pendingMessages.push({ ownerSessionId, payload });
-			return;
-		}
-
-		const remaining = this.countRunningForOwner(ownerSessionId, payload.id);
-		const isIdle = this.currentIsIdle();
-		const triggerResultTurn = !(isIdle && remaining > 0);
-
-		sendSteeringMessage(payload, pi, {
-			isIdle,
-			triggerTurn: triggerResultTurn,
-		});
-		sendRemainingNote(remaining, pi, {
-			isIdle,
-			triggerTurn: isIdle && remaining > 0,
-		});
 	}
 
 	/**
@@ -249,13 +152,18 @@ export class CrewManager {
 		state.result = opts.result;
 		state.error = opts.error;
 
-		this.deliverPayload(state.ownerSessionId, {
-			id: state.id,
-			agentName: state.agentConfig.name,
-			status: state.status,
-			result: state.result,
-			error: state.error,
-		}, pi);
+		this.delivery.deliver(
+			state.ownerSessionId,
+			{
+				id: state.id,
+				agentName: state.agentConfig.name,
+				status: state.status,
+				result: state.result,
+				error: state.error,
+			},
+			pi,
+			(ownerSessionId, excludeId) => this.registry.countRunningForOwner(ownerSessionId, excludeId),
+		);
 
 		if (state.status !== "waiting") {
 			this.disposeAgent(state);
@@ -266,7 +174,7 @@ export class CrewManager {
 
 	private disposeAgent(state: SubagentState): void {
 		state.session?.dispose();
-		this.activeAgents.delete(state.id);
+		this.registry.delete(state.id);
 		this.onWidgetUpdate?.();
 	}
 
@@ -281,9 +189,8 @@ export class CrewManager {
 			await state.session!.prompt(prompt);
 			if (isAborted(state)) return;
 
-			const result = extractLastAssistantText(state.session!.messages) ?? "(no output)";
-			const nextStatus = state.agentConfig.interactive ? "waiting" : "done";
-			this.settleAgent(state, nextStatus, { result }, pi);
+			const outcome = getPromptOutcome(state);
+			this.settleAgent(state, outcome.status, outcome, pi);
 		} catch (err) {
 			if (isAborted(state)) return;
 
@@ -331,7 +238,7 @@ export class CrewManager {
 		pi: ExtensionAPI,
 		callerSessionId: string,
 	): { error?: string } {
-		const state = this.activeAgents.get(id);
+		const state = this.registry.get(id);
 		if (!state) return { error: `No subagent with id "${id}"` };
 		if (state.ownerSessionId !== callerSessionId) {
 			return { error: `Subagent "${id}" belongs to a different session` };
@@ -348,7 +255,7 @@ export class CrewManager {
 	}
 
 	done(id: string, callerSessionId: string): { error?: string } {
-		const state = this.activeAgents.get(id);
+		const state = this.registry.get(id);
 		if (!state) return { error: `No active subagent with id "${id}"` };
 		if (state.ownerSessionId !== callerSessionId) {
 			return { error: `Subagent "${id}" belongs to a different session` };
@@ -362,8 +269,8 @@ export class CrewManager {
 	}
 
 	abort(id: string, pi: ExtensionAPI, opts: AbortOptions): boolean {
-		const state = this.activeAgents.get(id);
-		if (!state) return false;
+		const state = this.registry.get(id);
+		if (!state || !isAbortableStatus(state.status)) return false;
 
 		state.session?.abort().catch(() => {});
 		this.settleAgent(state, "aborted", { error: opts.reason }, pi);
@@ -384,7 +291,7 @@ export class CrewManager {
 		};
 
 		for (const id of uniqueIds) {
-			const state = this.activeAgents.get(id);
+			const state = this.registry.get(id);
 			if (!state || !isAbortableStatus(state.status)) {
 				result.missingIds.push(id);
 				continue;
@@ -404,12 +311,7 @@ export class CrewManager {
 	}
 
 	abortAllOwned(callerSessionId: string, pi: ExtensionAPI, opts: AbortOptions): string[] {
-		const ids = Array.from(this.activeAgents.values())
-			.filter(
-				(state) =>
-					state.ownerSessionId === callerSessionId && isAbortableStatus(state.status),
-			)
-			.map((state) => state.id);
+		const ids = this.registry.getOwnedAbortableIds(callerSessionId);
 
 		for (const id of ids) {
 			this.abort(id, pi, opts);
@@ -420,22 +322,14 @@ export class CrewManager {
 
 	abortForOwner(ownerSessionId: string, pi: ExtensionAPI): void {
 		this.abortAllOwned(ownerSessionId, pi, { reason: "Aborted on session shutdown" });
-		this.pendingMessages = this.pendingMessages.filter(
-			(entry) => entry.ownerSessionId !== ownerSessionId,
-		);
+		this.delivery.clearPendingForOwner(ownerSessionId);
 	}
 
 	getAbortableAgents(): AbortableAgentSummary[] {
-		return Array.from(this.activeAgents.values())
-			.filter((state) => isAbortableStatus(state.status))
-			.map(buildAbortableAgentSummary);
+		return this.registry.getAbortableAgents();
 	}
 
 	getActiveSummariesForOwner(ownerSessionId: string): ActiveAgentSummary[] {
-		return Array.from(this.activeAgents.values())
-			.filter(
-				(state) => isAbortableStatus(state.status) && state.ownerSessionId === ownerSessionId,
-			)
-			.map(buildActiveAgentSummary);
+		return this.registry.getActiveSummariesForOwner(ownerSessionId);
 	}
 }

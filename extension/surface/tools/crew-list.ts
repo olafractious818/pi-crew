@@ -1,0 +1,90 @@
+import { Text } from "@mariozechner/pi-tui";
+import { Type } from "@sinclair/typebox";
+import { discoverAgents } from "../../agents.js";
+import { STATUS_ICON } from "../../steering.js";
+import type { CrewToolDeps } from "./shared.js";
+
+export function registerCrewListTool({
+	pi,
+	crewManager,
+	notifyDiscoveryWarnings,
+}: CrewToolDeps): void {
+	pi.registerTool({
+		name: "crew_list",
+		label: "List Crew",
+		description:
+			"List available subagent definitions (from ~/.pi/agent/agents/*.md) and currently running subagents with their status.",
+		parameters: Type.Object({}),
+		promptSnippet: "List subagent definitions and active subagents",
+
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			const { agents, warnings } = discoverAgents();
+			notifyDiscoveryWarnings(ctx, warnings);
+			const callerSessionId = ctx.sessionManager.getSessionId();
+			const running = crewManager.getActiveSummariesForOwner(callerSessionId);
+
+			const lines: string[] = [];
+
+			lines.push("## Available subagents");
+			if (agents.length === 0) {
+				lines.push(
+					"No valid subagent definitions found. Add `.md` files to `~/.pi/agent/agents/`.",
+				);
+			} else {
+				for (const agent of agents) {
+					lines.push("");
+					lines.push(`**${agent.name}**`);
+					if (agent.description) lines.push(`  ${agent.description}`);
+					if (agent.model) lines.push(`  model: ${agent.model}`);
+					if (agent.interactive) lines.push("  interactive: true");
+					if (agent.tools !== undefined) {
+						lines.push(
+							`  tools: ${agent.tools.length > 0 ? agent.tools.join(", ") : "none"}`,
+						);
+					}
+					if (agent.skills !== undefined) {
+						lines.push(
+							`  skills: ${agent.skills.length > 0 ? agent.skills.join(", ") : "none"}`,
+						);
+					}
+				}
+			}
+
+			if (warnings.length > 0) {
+				lines.push("");
+				lines.push("## Ignored subagent definitions");
+				for (const warning of warnings) {
+					lines.push(`- ${warning.message} (${warning.filePath})`);
+				}
+			}
+
+			lines.push("");
+			lines.push("## Active subagents");
+			if (running.length === 0) {
+				lines.push("No subagents currently active.");
+			} else {
+				for (const agent of running) {
+					const icon = STATUS_ICON[agent.status] ?? "❓";
+					lines.push("");
+					lines.push(
+						`**${agent.id}** (${agent.agentName}) — ${icon} ${agent.status}`,
+					);
+					lines.push(`  task: ${agent.taskPreview}`);
+					lines.push(`  turns: ${agent.turns}`);
+				}
+			}
+
+			const text = lines.join("\n");
+			return { content: [{ type: "text", text }], details: {} };
+		},
+
+		renderCall(_args, theme, _context) {
+			return new Text(theme.fg("toolTitle", theme.bold("crew_list")), 0, 0);
+		},
+
+		renderResult(result, _options, _theme, _context) {
+			const text = result.content[0];
+			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+		},
+	});
+}

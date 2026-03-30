@@ -5,7 +5,8 @@
   "description": "Non-blocking subagent orchestration for pi coding agent",
   "files": [
     "dist/",
-    "agents/"
+    "agents/",
+    "prompts/"
   ],
   "author": "Melih Mucuk",
   "license": "MIT",
@@ -20,6 +21,9 @@
   "pi": {
     "extensions": [
       "./dist/index.js"
+    ],
+    "prompts": [
+      "./prompts"
     ]
   },
   "scripts": {
