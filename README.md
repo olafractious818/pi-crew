@@ -68,12 +68,12 @@ Closes an interactive subagent session owned by the current session when you no 
 "close planner-a1b2, the plan looks good"
 ```
 
-### `/pi-crew:abort`
+### `/pi-crew-abort`
 
 Aborts a running subagent. Supports tab completion for subagent IDs.
 Unlike the `crew_abort` tool, this command is intentionally unrestricted and works as an emergency escape hatch across sessions.
 
-### `/pi-crew:review`
+### `/pi-crew-review`
 
 Expands a bundled prompt template that orchestrates parallel code and quality reviews.
 Use it to review recent commits, staged changes, unstaged changes, and untracked files with `code-reviewer` and `quality-reviewer`, then merge both results into one report.

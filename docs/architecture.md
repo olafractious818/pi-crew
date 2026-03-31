@@ -199,7 +199,7 @@ File:
 
 - `extension/integration/register-command.ts`
 
-The extension also registers the `/pi-crew:abort` command.
+The extension also registers the `/pi-crew-abort` command.
 
 This command differs from `crew_abort` in one important way:
 
@@ -616,7 +616,7 @@ That last point is essential. The latest subagent response was already delivered
 There are three conceptually different abort sources:
 
 1. tool-triggered aborts through `crew_abort`
-2. unrestricted manual aborts through `/pi-crew:abort`
+2. unrestricted manual aborts through `/pi-crew-abort`
 3. cleanup aborts when an owner session shuts down
 
 Each path should report the real reason.
@@ -648,7 +648,7 @@ Relevant file:
 
 - `extension/integration/register-command.ts`
 
-`/pi-crew:abort` can target any active abortable subagent, regardless of owner. This is not a bug. It is an explicit operational decision.
+`/pi-crew-abort` can target any active abortable subagent, regardless of owner. This is not a bug. It is an explicit operational decision.
 
 ### 11.4 Session shutdown cleanup
 
@@ -691,7 +691,7 @@ This prevents cross-session interference in normal tool-driven workflows.
 
 ### 12.3 What is intentionally not isolated
 
-The emergency command `/pi-crew:abort` is intentionally cross-session.
+The emergency command `/pi-crew-abort` is intentionally cross-session.
 
 This is the only major exception to normal ownership isolation.
 
@@ -752,7 +752,7 @@ Architecturally, these files are not special-cased by the runtime. They are auto
 
 File:
 
-- `prompts/pi-crew:review.md`
+- `prompts/pi-crew-review.md`
 
 This prompt template is a good example of how `pi-crew` is meant to be consumed by higher-level orchestration prompts.
 
