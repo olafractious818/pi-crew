@@ -166,3 +166,9 @@ Overall assessment: [short clear assessment]
 - sort by severity
 - no unnecessary introduction
 - review only, no code changes
+
+## IMPORTANT
+
+- DO NOT perform any code review or quality review analysis yourself.
+- SPAWN the subagents with the review context and WAIT for their results.
+- NEVER PREDICT or FABRICATE results for subagents that have not yet reported back to you.
