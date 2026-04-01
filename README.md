@@ -73,6 +73,13 @@ Closes an interactive subagent session owned by the current session when you no 
 Aborts a running subagent. Supports tab completion for subagent IDs.
 Unlike the `crew_abort` tool, this command is intentionally unrestricted and works as an emergency escape hatch across sessions.
 
+### `/pi-crew-plan`
+
+Expands a bundled prompt template that orchestrates discovery and planning for implementation tasks.
+Use it to spawn scout subagents to investigate the codebase, then delegate to a planner subagent to produce a step-by-step implementation plan.
+
+Note: This prompt requires the `scout` and `planner` subagent definitions. These are included as bundled subagents and work out of the box.
+
 ### `/pi-crew-review`
 
 Expands a bundled prompt template that orchestrates parallel code and quality reviews.

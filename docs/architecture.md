@@ -748,7 +748,30 @@ They demonstrate how the extension is intended to be used:
 
 Architecturally, these files are not special-cased by the runtime. They are auto-discovered as the lowest-priority source (priority 3) and go through the same discovery and bootstrap pipeline as project-level or user-level definitions. Users can override any bundled subagent by placing a same-named `.md` file in `<cwd>/.pi/agents/` or `~/.pi/agent/agents/`.
 
-### 14.2 Bundled review orchestration prompt
+### 14.2 Bundled plan orchestration prompt
+
+File:
+
+- `prompts/pi-crew-plan.md`
+
+This prompt template orchestrates discovery and planning workflow.
+
+It tells the orchestrating agent to:
+
+- gather minimal orientation context
+- spawn scout subagents to investigate specific areas
+- collect and synthesize scout findings
+- delegate planning to a planner subagent
+- relay the planner's output to the user
+
+The prompt enforces strict delegation boundaries:
+
+- the orchestrator must not perform deep investigation itself
+- the orchestrator must not write the plan itself
+- detailed discovery belongs to scouts
+- plan creation belongs to the planner
+
+### 14.3 Bundled review orchestration prompt
 
 File:
 
