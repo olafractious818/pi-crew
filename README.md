@@ -8,8 +8,16 @@ Non-blocking subagent orchestration for [pi](https://pi.dev). Spawn isolated sub
 
 ## Install
 
+From npm:
+
 ```bash
 pi install npm:@melihmucuk/pi-crew
+```
+
+From git:
+
+```bash
+pi install git:github.com/melihmucuk/pi-crew
 ```
 
 This installs the extension, bundled prompt template, and bundled subagent definitions. Bundled subagents are automatically discovered and ready to use without any extra setup.
