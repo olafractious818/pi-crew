@@ -39,8 +39,6 @@ export default function (pi: ExtensionAPI) {
 		rebuildPromptCache(ctx.cwd);
 		activateSession(ctx);
 	});
-	pi.on("session_switch", (_event, ctx) => activateSession(ctx));
-	pi.on("session_fork", (_event, ctx) => activateSession(ctx));
 
 	pi.on("session_shutdown", (_event, ctx) => {
 		crewManager.abortForOwner(ctx.sessionManager.getSessionId(), pi);

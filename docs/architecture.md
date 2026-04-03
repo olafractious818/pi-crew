@@ -94,9 +94,7 @@ Responsibilities:
 
 Session lifecycle events used by the extension:
 
-- `session_start`
-- `session_switch`
-- `session_fork`
+- `session_start` (with `reason: "startup" | "reload" | "new" | "resume" | "fork"`)
 - `session_shutdown`
 
 This is the bridge between pi core events and `pi-crew` runtime behavior.
@@ -499,9 +497,7 @@ Delivery branches:
 
 Queued results are flushed when the extension sees that owner session through:
 
-- `session_start`
-- `session_switch`
-- `session_fork`
+- `session_start` (with `reason: "resume"` or `reason: "fork"` for session switches)
 
 ### 9.3 Idle vs streaming session behavior
 
@@ -527,7 +523,7 @@ Pending message flush after session activation is intentionally deferred to the 
 
 Reason:
 
-- pi-core can emit `session_switch` before reconnecting the agent listener during resume flows
+- pi-core can emit `session_start` with `reason: "resume"` before reconnecting the agent listener during resume flows
 - synchronous message delivery at that moment can lose custom message persistence
 
 This is why queued results are flushed asynchronously instead of synchronously during session activation.

@@ -23,7 +23,7 @@ export class DeliveryCoordinator {
 	): void {
 		this.currentSessionId = sessionId;
 		this.currentIsIdle = isIdle;
-		// Delay flush to next macrotask. session_switch fires before pi-core
+		// Delay flush to next macrotask. session_start fires before pi-core
 		// calls _reconnectToAgent(), so synchronous delivery would emit agent
 		// events while the session listener is disconnected, losing JSONL persistence.
 		if (this.pendingMessages.some((entry) => entry.ownerSessionId === sessionId)) {
