@@ -1,5 +1,5 @@
 ---
-description: Run parallel code and quality reviews to ensure high standards and catch issues early.
+description: Run parallel code and quality reviews by gathering minimal context and orchestrating reviewer subagents.
 ---
 
 # Parallel Review
@@ -11,29 +11,22 @@ description: Run parallel code and quality reviews to ensure high standards and 
 ## Role
 
 This is an orchestration prompt.
-Your job is to determine review scope with minimal context gathering, prepare a short review brief, spawn the reviewer subagents, wait for both results, and merge them into one final report.
+Determine review scope with minimal context gathering, prepare a short neutral brief, spawn the reviewer subagents, wait for their results, and merge them into one final report.
 
-Do not do the reviewers' job.
+Do not perform the review yourself.
 
-## Operating Boundaries
+## Scope Rules
 
-- Do not read full files before spawning subagents.
-- Do not dump raw diffs into the prompt.
-- Do not inspect every changed file manually.
-- Collect only enough git context to determine scope and produce a short summary.
-- Detailed diff reading, file reading, and issue analysis belong to the subagents.
-- Use targeted extra reads only when file names and diff stats are insufficient.
+- If the user specifies a scope (commit, branch, files, PR, or focus area), that scope overrides the default scope.
+- Otherwise, default scope includes:
+  - recent commits
+  - staged changes
+  - unstaged changes
+  - untracked files
 
-## Required Workflow
+## Context Gathering
 
-### 1) Determine scope
-
-Default scope, unless the user specifies otherwise:
-
-- recent commits
-- staged changes
-- unstaged changes
-- untracked files
+Collect only enough context to define scope and prepare a short brief.
 
 Collect:
 
@@ -45,130 +38,86 @@ Collect:
 - `git diff --stat`
 - untracked file list
 
-Do not collect full diffs by default.
-Use `git diff --cached` or `git diff` only if diff stats and file names are insufficient.
-
-Recent commit range:
+For recent commits:
 
 - use `HEAD~3..HEAD` if at least 3 commits exist
 - otherwise use the widest reachable history range
 
-For that range, collect:
+Collect for that range:
 
 - `git diff --stat <range>`
 - `git diff --name-only <range>`
 
-Use `git diff <range>` only if needed for a short summary.
+Rules:
 
-If the user gives a commit, branch, file, or extra focus area, include it as additional context.
+- Do not read full files before spawning subagents.
+- Do not dump raw diffs into the prompt.
+- Do not inspect every changed file manually.
+- Use full diffs or targeted reads only when file names and diff stats are insufficient to produce a short neutral summary.
+- Keep the brief short and descriptive, not analytical.
 
-### 2) Prepare subagent context
+## Subagent Preparation
 
-Prepare a short brief with:
-
-- review scope
-- commit range
-- staged/unstaged/untracked state
-- changed files
-- one-line summary per file or file group
-- additional user instructions
-
-Summary rules:
-
-- infer first from file paths, status codes, and diff stats
-- read only specific files or hunks if needed
-- keep it short
-- do not perform review analysis here
-
-### 3) Spawn reviewers
-
-Call `crew_list` first and verify:
+Call `crew_list` first and verify that both are available:
 
 - `code-reviewer`
 - `quality-reviewer`
 
-Spawn both in parallel.
-Each task must include:
+Prepare one short brief for both reviewers including:
 
 - repo root
-- review scope
-- commit range
-- staged/unstaged/untracked info
+- resolved review scope
+- commit range if any
+- staged / unstaged / untracked status
 - changed files
-- short change summary
-- user instructions
-- explicit instruction to inspect diffs and files itself
-- explicit instruction to follow its own output format strictly
+- short summary per file or file group
+- additional user instructions
 
-### 4) Wait
+## Execution
 
-Do not produce a final response until both subagents return.
-Do not synthesize partial results.
-Wait for two separate `crew-result` messages.
+Spawn `code-reviewer` and `quality-reviewer` in parallel.
 
-### 5) Merge reports
+If one reviewer is unavailable or fails to start, report that clearly and continue with the reviewer that is available.
 
-Final output must be in the same language as the user's prompt.
-Use the structure below directly. Do not read any subagent definition files just to reconstruct the format.
+Do not produce a final report until all successfully spawned reviewers have returned a result.
+Do not poll or repeatedly check active subagents while waiting; results will be delivered asynchronously.
 
-Order:
+## Merge
 
-#### A. Consensus Findings
+Write the final response in the same language as the user's request.
 
-**[SEVERITY] Category: Brief title**
-File: `path/to/file.ts:123` or `path/to/file.ts` (section)
-Issue: Clear merged explanation
-Context/Impact: Runtime or maintenance impact
-Suggestion: Clear fix direction
-Reported by: `code-reviewer`, `quality-reviewer`
+Structure:
+
+### Consensus Findings
+
+Merge only findings that are clearly the same issue reported by both reviewers.
+
+### Code Review Findings
+
+Include findings reported only by `code-reviewer`.
+
+### Quality Review Findings
+
+Include findings reported only by `quality-reviewer`.
+
+### Final Summary
+
+Include:
+
+- review scope
+- which reviewers ran
+- consensus findings count
+- code review findings count
+- quality review findings count
+- overall assessment
 
 Rules:
 
-- do not repeat the same issue
-- merge equivalent findings
-- if needed, use the stronger justified severity
-
-#### B. Code Review Findings
-
-**[SEVERITY] Category: Brief title**
-File: `path/to/file.ts:123`
-Issue: ...
-Context: ...
-Suggestion: ...
-Reported by: `code-reviewer`
-
-#### C. Quality Review Findings
-
-**[SEVERITY] Category: Brief title**
-File: `path/to/file.ts` (functionName or section, line range if identifiable)
-Issue: ...
-Impact: ...
-Suggestion: ...
-Reported by: `quality-reviewer`
-
-#### D. Final Summary
-
-**Combined Review Summary**
-Files reviewed: [count or list]
-Consensus findings: [count]
-Code review findings: [count by severity]
-Quality review findings: [count by severity]
-Strong signals: [titles found by both reviewers or `none`]
-Overall assessment: [short clear assessment]
-
-## Synthesis Rules
-
-- do not repeat overlapping issues
-- merge close variants into one item
-- do not invent resolution for reviewer conflicts
-- if both say `No issues found.`, say so explicitly
-- if only one reviewer reports an issue, do not present it as consensus
-- sort by severity
-- no unnecessary introduction
-- review only, no code changes
-
-## IMPORTANT
-
-- DO NOT perform any code review or quality review analysis yourself.
-- SPAWN the subagents with the review context and WAIT for their results.
-- NEVER PREDICT or FABRICATE results for subagents that have not yet reported back to you.
+- Do not repeat overlapping findings.
+- Do not invent reviewer output, evidence, or counts.
+- Do not present a single-reviewer finding as consensus.
+- If both reviewers report no issues, say so explicitly.
+- If one reviewer failed or was unavailable, say so explicitly.
+- Review only. Do not make code changes.
+- Do not analyze code, infer issues, or produce findings yourself. Only orchestrate reviewers and merge their reported results.
+- Never fabricate subagent results. Wait for all successfully spawned reviewers to return.

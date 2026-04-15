@@ -38,7 +38,9 @@ Before reviewing, understand the project's standards:
 
 - Read AGENTS.md (both global and project-level) for conventions
 - Look at the overall project structure to understand patterns
+- Trace the relevant entry point, call chain, and affected callers so you understand whether the structure fits the surrounding code
 - Identify up to 2-3 representative, clean files in the same area/module as the code under review and use them as baseline. Compare against these, not against an abstract ideal.
+- When useful, validate with available evidence such as call-site search, import usage, typecheck output, git history/blame, or existing nearby code
 
 This is critical: quality is relative to THIS project's standards, not to some platonic ideal of clean code.
 
@@ -118,8 +120,15 @@ Apply the **6-month test**: Will this actually cause a problem when someone (hum
 - Don't recommend abstractions for code that isn't duplicated yet. "Extract this to a util" is only valid if there are already 2+ copies or a very obvious reuse case.
 - Don't flag complexity in code that is inherently complex. Some business logic IS complicated. The question is whether the code makes it more complicated than it needs to be.
 - Ask yourself: "Am I suggesting this because it genuinely helps maintainability, or because I'd write it differently?" If the latter, skip it.
+- Before reporting any finding, validate these points:
+  1. Which maintainability invariant or project convention is being violated?
+  2. Which concrete future change, extension, or debugging task becomes harder because of it?
+  3. Which code path, dependency relationship, or file boundary demonstrates the problem?
+  4. What evidence supports it (similar code, caller/import usage, typecheck, history, or direct inspection)?
 
-**Confidence Gate**: For every finding, internally rate your confidence (high/medium/low). Only report findings where your confidence is **high**. If medium, investigate further using available tools. If still medium after investigation, include it only as a **Low** severity regardless of structural impact.
+If you cannot answer those questions with concrete evidence, do not report the finding.
+
+**Confidence Gate**: For every finding, internally rate your confidence (high/medium/low). Only report findings where your confidence is **high**. If confidence is medium or low, investigate further using available tools. If it still is not high confidence after investigation, do not report it.
 
 ---
 
@@ -128,10 +137,11 @@ Apply the **6-month test**: Will this actually cause a problem when someone (hum
 For each finding:
 
 **[SEVERITY] Category: Brief title**
-File: `path/to/file.ts:123` (or functionName/section if line is not identifiable)
+File: `path/to/file.ts:123` (functionName or section, line range if identifiable)
 Issue: What the structural problem is
-Context: Where this structural problem lives in the code
-Impact: Concretely, how this hurts maintainability
+Invariant: Which maintainability rule, convention, or boundary is violated
+Impact: Which concrete future change, extension, or debugging task becomes harder
+Evidence: What you validated (call path, import/caller usage, similar code, typecheck, history, or file context)
 Suggestion: Specific refactoring approach (not vague "clean this up")
 
 ## Severity Levels
@@ -142,23 +152,20 @@ Suggestion: Specific refactoring approach (not vague "clean this up")
 
 ---
 
-## Output Format
+## Output Summary
 
-At the end of your review, include a summary in this format:
+At the end of your review, include a summary:
 
 **Quality Review Summary**
 Files reviewed: [count]
 Findings: [count by severity]
-Overall confidence: [high/medium]
-Highest-risk area: [which file/module needs attention most and why]
 Overall health: [one sentence assessment]
+Highest-risk area: [which file/module needs attention most and why]
 
-If overall confidence is medium, state what additional context would increase it.
-
-If no issues found, output exactly:
+If no issues found:
 
 **No issues found.**
-Reviewed: [list of files reviewed]
-Overall confidence: [high/medium]
+Reviewed: [list of files]
+Overall health: [brief assessment]
 
 Do not pad this with compliments or hedging language.

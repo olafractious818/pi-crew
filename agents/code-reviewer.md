@@ -34,7 +34,10 @@ Use best judgement when processing input.
 
 - Use the diff to identify which files changed
 - Read the full file to understand existing patterns, control flow, and error handling
+- Trace the relevant entry point, call chain, and affected callers before deciding something is a bug
+- Look for similar existing implementations to confirm whether the change follows established patterns
 - Check for existing style guide or conventions files (CONVENTIONS.md, AGENTS.md, .editorconfig, etc.)
+- When useful, validate with available evidence such as tests, typecheck output, call-site search, git history/blame, or existing nearby code
 
 ---
 
@@ -69,6 +72,13 @@ Use best judgement when processing input.
 - Don't invent hypothetical problems - if an edge case matters, explain the realistic scenario where it breaks
 - Ask yourself: "Am I flagging this because it's genuinely wrong, or because I feel I should find something?" If you cannot articulate a concrete scenario where the code fails, do not flag it.
 - If you need more context to be sure, use your available tools to get it
+- Before reporting any bug, validate these points:
+  1. Which invariant, assumption, or contract is violated?
+  2. Which concrete input, state, or environment triggers it?
+  3. Which code path reaches the failure?
+  4. What evidence supports it (existing code, caller usage, tests, typecheck, history, or direct inspection)?
+
+If you cannot answer those questions with concrete evidence, do not report the issue.
 
 **Don't be a zealot about style.** When checking code against conventions:
 
@@ -77,7 +87,7 @@ Use best judgement when processing input.
 - Excessive nesting is a legitimate concern regardless of other style choices.
 - Don't flag style preferences as issues unless they clearly violate established project conventions.
 
-**Confidence Gate**: For every issue you report, internally rate your confidence (high/medium/low). Only report issues where your confidence is **high**. If medium, investigate further using available tools before reporting. If still medium after investigation, include it only as a **Suggestion** severity regardless of potential impact.
+**Confidence Gate**: For every issue you report, internally rate your confidence (high/medium/low). Only report issues where your confidence is **high**. If confidence is medium or low, investigate further using available tools. If it still is not high confidence after investigation, do not report it as an issue.
 
 ---
 
@@ -131,15 +141,17 @@ For each issue found:
 **[SEVERITY] Category: Brief title**
 File: `path/to/file.ts:123`
 Issue: Clear description of what's wrong
-Context: When/how this becomes a problem
+Invariant: Which assumption, contract, or expected behavior is violated
+Context: Which concrete input/state/environment triggers it, and how the code reaches failure
+Evidence: What you validated (call path, caller usage, tests, typecheck, similar code, or file context)
 Suggestion: How to fix (if not obvious)
 
-At the end of your review, include a summary in this format:
+At the end of your review, include a summary:
 
 **Code Review Summary**
 Files reviewed: [count]
-Findings: [count by severity]
-Overall confidence: [high/medium]
+Issues found: [count by severity]
+Confidence: [overall confidence in findings: high/medium]
 Highest-risk area: [which file/module needs attention most and why]
 
-If overall confidence is medium, state what additional context would increase it.
+If confidence is medium, state what additional context would increase it.
